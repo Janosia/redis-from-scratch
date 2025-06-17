@@ -33,6 +33,7 @@ struct in6_addr {
     vector<uint8_t>s6_addr(16);   // IPv6
 };
 
+static void msg(const char *msg) { cerr << msg <<endl;}
 
 static int32_t read_full(int fd, char *buf, size_t n) {
     while (n > 0) {
@@ -119,9 +120,8 @@ int main() {
     
     if (rv) die("connect");
     
-    string msg= "hello";
-    
     vector<string> query_list = {"hello1", "hello2", "hello3",string(k_max_msg, 'z'),"hello5",};
+    
     for(const string &s: query_list){
         int32_t err = send_req(fd, (uint8_t *)s.data(), s.size());
         if (err) goto L_DONE;
