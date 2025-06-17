@@ -1,32 +1,39 @@
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
+
 #include <errno.h>
 #include <unistd.h>
+
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/ip.h>
+
+#include <cassert>
+#include <iostream>
+#include <vector>
+#include <string>
+#include <cstring>
 
 using namespace std;
 
 static void die(const char *msg) {
     int err = errno;
-    // fprintf(stderr, "[%d] %s\n", err, msg);
     cerr << "[ " << err <<" ] "<< msg <<endl; 
     abort();
 }
-// struct sockaddr_in6 {
-//     uint16_t        sin6_family;   // AF_INET6
-//     uint16_t        sin6_port;     // port in big-endian
-//     uint32_t        sin6_flowinfo; // ignore
-//     struct in6_addr sin6_addr;     // IPv6
-//     uint32_t        sin6_scope_id; // ignore
-// };
+struct sockaddr_in6 {
+    uint16_t        sin6_family;   // AF_INET6
+    uint16_t        sin6_port;     // port in big-endian
+    uint32_t        sin6_flowinfo; // ignore
+    struct in6_addr sin6_addr;     // IPv6
+    uint32_t        sin6_scope_id; // ignore
+};
 
-// struct in6_addr {
-//     uint8_t         s6_addr[16];   // IPv6
-// };
+struct in6_addr {
+    vector<uint8_t>s6_addr(16);   // IPv6
+};
+
+
 static int32_t read_full(int fd, char *buf, size_t n) {
     while (n > 0) {
         ssize_t rv = read(fd, buf, n);
@@ -67,12 +74,11 @@ static int32_t send_req(int fd, const uint8_t *text, size_t len) {
 }
 
 static int32_t read_res(int fd) {
-    // uint32_t len = (uint32_t)strlen(text);
-    vector<uint8_t>rbuf;
+    vector<char>rbuf;
     rbuf.resize(4);
     errno = 0;
 
-    int32_t err = read_full(fd, rbuf, 4);
+    int32_t err = read_full(fd, &rbuf[4], 4);
     if (err) {
         msg(errno == 0 ? "EOF" : "read() error");
         return err;
@@ -91,12 +97,7 @@ static int32_t read_res(int fd) {
         msg("read() error");
         return err;
     }
-
-    // do something
-    // printf("server says: %.*s\n", len, &rbuf[4]);
-    // cout << "server says: "<< string(&rbuf[4], len)<<endl;
-    printf("len:%u data:%.*s\n", len, len < 100 ? len : 100, &rbuf[4]);
-    cout << "len:"<<len << " data " << string(&rbuf[4], len<100?len:100);
+    cout << "Length : "<< len << " data " << string(&rbuf[4], len<100?len:100);
     return 0;
 }
 
@@ -110,37 +111,18 @@ int main() {
     
     struct sockaddr_in6 addr = {};
     // binding to an address
-    addr.sin_family = AF_INET6;
-    addr.sin_port = ntohs(1234);
-    addr.sin_addr.s_addr = ntohl(INADDR_LOOPBACK);  // 127.0.0.1
+    addr.sin6_family = AF_INET6;
+    addr.sin6_port = ntohs(1234);
+    addr.sin6_addr.s6_addr = ntohl(INADDR_LOOPBACK);  // 127.0.0.1
     
     int rv = connect(fd, (const struct sockaddr *)&addr, sizeof(addr));
     
     if (rv) die("connect");
     
-    // char msg[] = "hello";
-    // write(fd, msg, strlen(msg));
-
-    // char rbuf[64] = {};
-    // ssize_t n = read(fd, rbuf, sizeof(rbuf) - 1);
+    string msg= "hello";
     
-    // if (n < 0) die("read");
-    
-    // cout << "server says: " << rbuf << "\n";
-    // multiple requests
-
-    
-//     int32_t err = query(fd, "hello1");
-//     if (err) goto L_DONE;
-    
-//     err = query(fd, "hello2");
-//     if (err) goto L_DONE;
-    
-//     err = query(fd, "hello3");
-//     if (err) goto L_DONE;
-// 
-    vector<string> query_list = {"hello1", "hello2", "hello3",string(k_max_msg, 'z'),"hello5",}
-    for (const string &s : query_list) {
+    vector<string> query_list = {"hello1", "hello2", "hello3",string(k_max_msg, 'z'),"hello5",};
+    for(const string &s: query_list){
         int32_t err = send_req(fd, (uint8_t *)s.data(), s.size());
         if (err) goto L_DONE;
     }
