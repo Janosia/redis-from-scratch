@@ -16,17 +16,28 @@
 
 using namespace std;
 
-// struct sockaddr_in6 {
-//     uint16_t        sin6_family;   // AF_INET6
-//     uint16_t        sin6_port;     // port in big-endian
-//     uint32_t        sin6_flowinfo; // ignore
-//     struct in6_addr sin6_addr;     // IPv6
-//     uint32_t        sin6_scope_id; // ignore
-// };
+/* struct sockaddr_in6 {
+    uint16_t        sin6_family;    AF_INET6
+    uint16_t        sin6_port;     port in big-endian
+    uint32_t        sin6_flowinfo; ignore
+    struct in6_addr sin6_addr;     IPv6
+    uint32_t        sin6_scope_id; ignore
+};
 
-// struct in6_addr {
-//     vector<uint8_t> s6_addr(16);   // IPv6
-// };
+struct in6_addr {
+    vector<uint8_t> s6_addr(16);    IPv6
+};*/
+
+
+struct Conn {
+    int fd = -1;
+    bool want_read = false;
+    bool want_write = false;
+    bool want_close = false;
+
+    vector<uint8_t>incoming;
+    vector<uint8_t>outgoing;
+};
 
 struct Response{
     uint32_t status =0;
@@ -40,16 +51,6 @@ enum {
 };
 
 map<string, string>g_data; // faking kv store
-
-struct Conn {
-    int fd = -1;
-    bool want_read = false;
-    bool want_write = false;
-    bool want_close = false;
-
-    vector<uint8_t>incoming;
-    vector<uint8_t>outgoing;
-};
 
 static void msg(const char *msg) { cerr << msg <<endl;}
 
