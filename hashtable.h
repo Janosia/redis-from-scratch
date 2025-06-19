@@ -24,5 +24,5 @@ struct HMap{
 };
 
 HNode *hm_lookup(HMap *hmap, HNode *key, bool (*eq)(HNode *, HNode*));
-void *hm_insert(HTab *htab, HNode *node);
-HNode *h_delete(HTab *htab, HNode *key, bool(*eq) (HNode*, HNode*));
+void *hm_insert(HMap *hmap, HNode *node);
+HNode *h_delete(HMap *hmap, HNode *key, bool(*eq) (HNode*, HNode*));
