@@ -14,6 +14,8 @@
 #include <vector>
 #include <map>
 
+
+#include "hashtable.h"
 using namespace std;
 
 /* struct sockaddr_in6 {
@@ -27,6 +29,9 @@ using namespace std;
 struct in6_addr {
     vector<uint8_t> s6_addr(16);    IPv6
 };*/
+
+#define container_of(ptr, T, member) \
+    ((T *)( (char *)ptr - offsetof(T, member) ))
 
 
 struct Conn {
@@ -50,8 +55,23 @@ enum {
     RES_NX = 2,     // key not found
 };
 
-map<string, string>g_data; // faking kv store
+static struct {HMap db;}g_data; // kv store
 
+struct Entry{
+    struct HNode node;
+    string key;
+    string val;
+};
+
+static bool equality(HNode *lhs, HNode *rhs){
+    struct Entry *le = container_of(lhs, struct Entry, node);
+    struct Entry *re = container_of(rhs, struct Entry, node);
+    return le->key==re->key;
+}
+
+static void do_get(vector<int>&cmd, Response &out){
+    return
+}
 static void msg(const char *msg) { cerr << msg <<endl;}
 
 static void msg_errno(const char *msg){cerr<< errno << " "<<msg<<endl;}
