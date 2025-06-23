@@ -82,7 +82,7 @@ HNode *h_delete(HMap *hmap, HNode *key, bool (*eq)(HNode *, HNode*)){
     return NULL;
 }
 
-void hm_insert(HMap *hmap, HNode *node){
+void *hm_insert(HMap *hmap, HNode *node){
     if(!hmap->newer.tab)h_init(&hmap->newer,4);
     h_insert(&hmap->newer, node);
     if(!hmap->older.tab){
