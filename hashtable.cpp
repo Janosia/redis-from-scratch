@@ -92,7 +92,7 @@ void hm_insert(HMap *hmap, HNode *node){
     hm_help_rehashing(hmap);
 }
 
-HNode *hm_delete(HMap *hmap, HNode *key, bool (*eq)(HNode * , HNode *)){
+HNode* hm_delete(HMap *hmap, HNode *key, bool (*eq)(HNode * , HNode *)){
     hm_help_rehashing(hmap);
     if(HNode **from = h_lookup(&hmap->newer , key, eq)) return h_detach(&hmap->newer, from);
     if(HNode **from = h_lookup(&hmap->older , key, eq)) return h_detach(&hmap->older, from);
