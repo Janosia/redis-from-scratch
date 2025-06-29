@@ -1,16 +1,15 @@
 #pragma once 
 
-#include<iostream>
+#include <iostream>
 #include <stdint.h>
 #include <stddef.h>
 
 struct HNode // instrusive list node
 {
     HNode *next = NULL;
-    uint64_t hcode =0 ; // hashes
+    uint64_t hcode =0 ; 
 };
 
-//fixed size hash table
 struct HTab{
     HNode **tab = NULL;
     size_t mask =0;
@@ -27,3 +26,5 @@ HNode *hm_lookup(HMap *hmap, HNode *key, bool (*eq)(HNode *, HNode*));
 void *hm_insert(HMap *hmap, HNode *node);
 HNode *h_delete(HMap *hmap, HNode *key, bool(*eq) (HNode*, HNode*));
 HNode* hm_delete(HMap *hmap, HNode *key, bool (*eq)(HNode * , HNode *));
+void hm_foreach(HMap *hmap, bool (*f)(HNode *, void *), void *arg);
+size_t hm_size(HMap *hmap);
