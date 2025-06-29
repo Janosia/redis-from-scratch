@@ -30,29 +30,41 @@ struct in6_addr {
     vector<uint8_t> s6_addr(16);    IPv6
 };*/
 
+
+// REMOVE THIS IF ANY VIRTUAL FUNCTION IS INTRODUCED
 #define container_of(ptr, T, member) \
     ((T *)( (char *)ptr - offsetof(T, member) ))
+
+const size_t k_max_msg = 32 <<20, k_max_args = 200 *1000;
+typedef vector<uint8_t>Buffer;
 
 
 struct Conn {
     int fd = -1;
+
+    // what (woman) application wants 
     bool want_read = false;
     bool want_write = false;
     bool want_close = false;
 
-    vector<uint8_t>incoming;
-    vector<uint8_t>outgoing;
+    Buffer incoming;
+    Buffer outgoing;
 };
 
-struct Response{
-    uint32_t status =0;
-    vector<uint8_t>data;
+// error codes 
+enum ErrorCode {
+    ERR_UNKNOWN = -1,
+    ERR_TOO_BIG = -2,
 };
 
-enum {
-    RES_OK = 0,
-    RES_ERR = 1,    // error
-    RES_NX = 2,     // key not found
+// DATA TYPE CODES
+enum{
+    TAG_NIL = 0,    // nil
+    TAG_ERR = 1,    // error code + msg
+    TAG_STR = 2,    // string
+    TAG_INT = 3,    // int64
+    TAG_DBL = 4,    // double
+    TAG_ARR = 5,    // array
 };
 
 static struct {HMap db;}g_data; // kv store
@@ -63,16 +75,19 @@ struct Entry{
     string val;
 };
 
-struct LookupKey{
-    HNode node;
-    string key;
-};
-
+// comparison function for Entry
 static bool equality(HNode *lhs, HNode *rhs){
     struct Entry *le = container_of(lhs, struct Entry, node);
     struct Entry *re = container_of(rhs, struct Entry, node);
     return le->key==re->key;
 }
+
+struct LookupKey{
+    HNode node;
+    string key;
+};
+
+
 
 static void msg(const char *msg) { cerr << msg <<endl;}
 
@@ -100,21 +115,63 @@ static void fd_set_nb(int fd){
     if(errno) die("fcntl error");
 }
 
-const size_t k_max_msg = 32 <<20, k_max_args = 200 *1000;
-
-
-
-static void buf_append(vector<uint8_t> &buf, const uint8_t*data, size_t len) {
+// add to back
+static void buf_append(Buffer &buf, const uint8_t*data, size_t len) {
     buf.insert(buf.end(), data, data+len);}
 
-static void buf_consume(vector<uint8_t> &buf, size_t n) {
+    // serilized data 
+static void buf_append_u8(Buffer &buf, uint8_t data) {
+    buf.push_back(data);
+}
+static void buf_append_u32(Buffer &buf, uint32_t data) {
+    buf_append(buf, (const uint8_t *)&data, 4); 
+}
+static void buf_append_i64(Buffer &buf, int64_t data) {
+    buf_append(buf, (const uint8_t *)&data, 8);
+}
+static void buf_append_dbl(Buffer &buf, double data) {
+    buf_append(buf, (const uint8_t *)&data, 8);
+}
+
+static void out_nil(Buffer &out){
+    buf_append_u8(out, TAG_NIL);
+}
+static void out_str(Buffer &out, const char *s, size_t size){
+    buf_append_u8(out, TAG_STR);
+    buf_append_u32(out, (uint32_t)size);
+    buf_append(out, (const uint8_t *)s, size);
+}
+
+static void out_int(Buffer &out, int64_t val) {
+    buf_append_u8(out, TAG_INT);
+    buf_append_i64(out, val);
+}
+static void out_arr(Buffer &out, uint32_t n) {
+    buf_append_u8(out, TAG_ARR);
+    buf_append_u32(out, n);
+}
+static void out_dbl(Buffer &out, double val) {
+    buf_append_u8(out, TAG_DBL);
+    buf_append_dbl(out, val);
+}
+static void out_err(Buffer &out, uint32_t code, const string &msg) {
+    buf_append_u8(out, TAG_ERR);
+    buf_append_u32(out, code);
+    buf_append_u32(out, (uint32_t)msg.size());
+    buf_append(out, (const uint8_t *)msg.data(), msg.size());
+}
+
+// remove from front 
+static void buf_consume(Buffer &buf, size_t n) {
     buf.erase(buf.begin(), buf.begin()+n);}
 
+
+// listening socket is ready    
 static Conn * handle_accept(int fd){
     struct sockaddr_in6 client_addr={};
     socklen_t addrlen = sizeof(client_addr);
     int connfd = accept(fd, (struct sockaddr *)&client_addr, &addrlen);
-    if(connfd <0 ){
+    if(connfd < 0 ){
         msg_errno("accept() error");
         return NULL;
     }
@@ -132,34 +189,35 @@ static Conn * handle_accept(int fd){
 
 //helper function
 static bool read_u32(const uint8_t *&cur, const uint8_t *end, uint32_t &out){
-    if(cur+4 >end) return false;
-    memcpy(&out, cur, 4);
-    cur+=4;
+    if( cur+4 >end) return false;
+    memcpy( &out, cur, 4);
+    cur += 4;
     return true;
 }
 
 static bool read_str(const uint8_t *&cur, const uint8_t *end,size_t n, string &out){
-    if(cur+n>end) return false;
+    if( cur+n > end) return false;
     
     out.assign(cur, cur+n);
-    cur+=n;
+    cur += n;
     return true;
 }
 
 static int32_t parse_req(const uint8_t *data, size_t size, vector<string>&out){
     const uint8_t *end = data +size;
-    uint32_t nstr=0;
-    if(!read_u32(data, end, nstr)) return -1;
+    uint32_t nstr = 0;
+    
+    if( !read_u32(data, end, nstr) ) return -1;
 
-    if(nstr>k_max_args) return -1;
+    if( nstr > k_max_args) return -1;
 
-    while(out.size() <nstr){
-        uint32_t len =0;
-        if(!read_u32(data, end, len)) return -1;
+    while( out.size() < nstr ){
+        uint32_t len = 0;
+        if( !read_u32(data, end, len) ) return -1;
         out.push_back(string());
-        if(!read_str(data, end,len, out.back())) return -1;
+        if( !read_str(data, end,len, out.back()) ) return -1;
     }
-    if(data !=end) return -1;
+    if(data != end) return -1;
     return 0;
 }
 
@@ -169,76 +227,122 @@ static bool entry_eq(HNode *lhs, HNode *rhs) {
     return le->key == re->key;
 }
 
+
+// just create hash here 
 static uint64_t  str_hash(const uint8_t *data, size_t len){
     uint32_t h = 0x811C9DC5;
     for(size_t i=0; i<len; i++){
-        h= (h+data[i])*0x01000193;
+        h = (h+data[i]) * 0x01000193;
     }
     return h;
 }
-static void do_get(vector<string>&cmd, Response &out){
+
+
+static void do_get(vector<string>&cmd, Buffer &out){
+    // dummy entry 
     Entry key;
     key.key.swap(cmd[1]);
     key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
+    // lookup 
     HNode *node = hm_lookup(&g_data.db, &key.node, &entry_eq);
-    if(!node){
-        out.status = RES_NX;
-        return;
-    }
+    
+    if(!node) return out_nil(out);
+    
+    // copy value and send back
     string &val = container_of(node, Entry, node)->val;
-    assert(val.size() <=k_max_msg);
-    out.data.assign(val.begin(), val.end());
+    return out_str(out, val.data(), val.size());
 }
 
-static void do_set(vector<string>&cmd, Response &){
+static void do_set(vector<string>&cmd, Buffer &out){
+    // dummy entry
     Entry key;
     key.key.swap(cmd[1]);
     key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
+    
+    // lookup 
     HNode *node = hm_lookup(&g_data.db, &key.node, &entry_eq);
-    if(!node){
-       container_of(node, Entry, node)->val.swap(cmd[2]);
-    }else{
+    
+    if( node ){
+        // update the obtained value from lookup
+        container_of(node, Entry, node)->val.swap(cmd[2]);
+    }else{ // nothing found 
+        // create and insert new pair
         Entry *ent = new Entry();
         ent->key.swap(key.key);
         ent->node.hcode = key.node.hcode;
         ent->val.swap(cmd[2]);
+        // insertion
         hm_insert(&g_data.db, &ent->node);
     }
+    
+    return out_nil(out);
 }
 
-static void do_del(vector<string> &cmd, Response &) {
+static void do_del(vector<string> &cmd, Buffer &out) {
     Entry key;
     key.key.swap(cmd[1]);
     key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
     HNode *node = hm_delete(&g_data.db, &key.node, &entry_eq);
+    
     if (node) { 
+        // found pair now deallocate the memory
         delete container_of(node, Entry, node);
     }
+    
+    return out_int(out, node ? 1 :0); //number of deleted keys
 }
 
-static void do_request(std::vector<std::string> &cmd, Response &out) {
+static bool cb_keys(HNode *node, void *arg) {
+    Buffer &out = *(Buffer *)arg;
+    const string &key = container_of(node, Entry, node)->key;
+    out_str(out, key.data(), key.size());
+    return true;
+}
+
+static void do_keys(vector<string> &, Buffer &out) {
+    
+    out_arr(out, (uint32_t)hm_size(&g_data.db));
+    
+    hm_foreach(&g_data.db, &cb_keys, (void *)&out);
+}
+
+static void do_request(vector<string> &cmd, Buffer &out) {
     if (cmd.size() == 2 && cmd[0] == "get") {
         return do_get(cmd, out);
     } else if (cmd.size() == 3 && cmd[0] == "set") {
         return do_set(cmd, out);
     } else if (cmd.size() == 2 && cmd[0] == "del") {
         return do_del(cmd, out);
-    } else {
-        out.status = RES_ERR;      
+    } else if (cmd.size() == 1 && cmd[0] == "keys"){
+        return do_keys(cmd, out);      
+    }else{
+        return out_err(out, ERR_UNKNOWN, "unknown command ");
     }
 }
 
-static void make_response(const Response &resp, vector<uint8_t>&out){
-    uint32_t resp_len = 4+(uint32_t)resp.data.size();
-    buf_append(out, (const uint8_t *)&resp_len, 4);
-    buf_append(out, (const uint8_t *)&resp.status, 4);
-    buf_append(out, resp.data.data(), resp.data.size());
+static void response_begin(Buffer &out, size_t *header) {
+    *header = out.size();       // messege header position
+    buf_append_u32(out, 0);     // reserve space
 }
+static size_t response_size(Buffer &out, size_t header) {
+    return out.size() - header - 4;
+}
+static void response_end(Buffer &out, size_t header) {
+    size_t msg_size = response_size(out, header);
+    if (msg_size > k_max_msg) {
+        out.resize(header + 4);
+        out_err(out, ERR_TOO_BIG, "response is too big.");
+        msg_size = response_size(out, header);
+    }
+    uint32_t len = (uint32_t)msg_size;
+    memcpy(&out[header], &len, 4);
+}
+
 
 static bool try_one_request(Conn *conn){
     if(conn->incoming.size() <4) return false;
-
-    uint32_t  len =0;
+    size_t header_pos = 0;
+    uint32_t  len = 0;
     memcpy(&len, conn->incoming.data(), 4);
     if(len > k_max_msg){
         msg("too long");
@@ -246,28 +350,32 @@ static bool try_one_request(Conn *conn){
         return false;
     }
 
-    if(4+len > conn->incoming.size()) return false;
+    if ( 4 + len > conn->incoming.size() ) return false;
+    
     const uint8_t *request = &conn->incoming[4];
     cout << "client says "<< len <<" "; 
-    len = len<100?len:100;
+    len = len < 100 ? len : 100;
     cout << request <<endl;
 
-    buf_append(conn->outgoing, (const uint8_t *)&len , 4);
-    buf_append(conn->outgoing, request, len);
+    buf_append( conn->outgoing, (const uint8_t *)&len , 4 );
+    buf_append( conn->outgoing, request, len );
 
-    buf_consume(conn->incoming , 4+len);
+    buf_consume( conn->incoming , 4 + len );
 
     vector<string>cmd;
-    if(parse_req(request, len, cmd)<0){
+
+    if( parse_req( request, len, cmd ) < 0 ){
         conn->want_close = true;
         return false;
     }
-    Response resp;
-    do_request(cmd, resp);
-    make_response(resp, conn->outgoing);
+    
+    response_begin(conn->outgoing, &header_pos);
+    do_request(cmd, conn->outgoing);
+    response_end(conn->outgoing, header_pos);
 
     return true;
 }
+
 static int32_t read_full(int fd, char *buf, size_t n) {
     while (n > 0) {
         ssize_t rv = read(fd, buf, n);
@@ -343,10 +451,10 @@ static void handle_read(Conn *conn){
 
 
 int main() {
-    int fd = socket(AF_INET6, SOCK_STREAM, 0);
-    if (fd < 0) die("socket()");
     
-
+    int fd = socket(AF_INET6, SOCK_STREAM, 0);
+    if ( fd < 0 ) die("socket()");
+    
     int val = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
 
@@ -377,41 +485,49 @@ int main() {
         poll_args.push_back(pfd);
 
         for( auto conn : fd2Conn){
+            
             if(!conn) continue;
+            
             struct pollfd pfd ={conn->fd, POLLERR, 0};
+            
             if(conn->want_read) pfd.events |=POLLIN;
+            
             if(conn->want_write) pfd.events |=POLLOUT;
+            
             poll_args.push_back(pfd);
         }
 
         int rv = poll(poll_args.data(), (nfds_t)poll_args.size(), -1);
-        if(rv<0 && errno == EINTR) continue;
-        if(rv<0) die("poll");
+        
+        if( rv < 0 && errno == EINTR) continue;
+        
+        if( rv < 0 ) die("poll");
 
-        if(poll_args[0].revents){
+        if( poll_args[0].revents ){
             if(Conn *conn = handle_accept(fd)){
-                if(fd2Conn.size() <=(size_t)conn->fd) fd2Conn.resize(conn->fd+1);
-                assert(!fd2Conn[conn->fd]);
+                if( fd2Conn.size() <=(size_t)conn->fd) fd2Conn.resize(conn->fd+1);
+                assert( !fd2Conn[conn->fd]);
                 fd2Conn[conn->fd] = conn;
             }
         }
 
         for(size_t i=1; i<poll_args.size(); ++i){
+            
             uint32_t ready = poll_args[i].revents;
-            if(ready==0){
-                continue;
-            }
+            
+            if( ready == 0) continue;
+            
             Conn *conn = fd2Conn[poll_args[i].fd];
 
-            if(ready &POLLIN){
+            if( ready & POLLIN ){
                 assert(conn->want_read);
                 handle_read(conn);
             }
-            if (ready &POLLOUT){
+            if ( ready & POLLOUT ){
                 assert(conn->want_write);
                 handle_write(conn);
             }
-            if ((ready & POLLERR) || conn->want_close) {
+            if ( (ready & POLLERR) || conn->want_close ) {
                 (void)close(conn->fd);
                 fd2Conn[conn->fd]=NULL;
                 delete conn;
