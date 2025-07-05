@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 #include "hashtable.h"
-
+#include "zset.h"
 using namespace std;
 
 const size_t k_max_msg = 32 <<20, k_max_args = 200 *1000;
@@ -55,3 +55,26 @@ class LookupKey{
         HNode node;
         string key;
 };
+
+
+class Entry {
+    public:
+        struct HNode node;  
+        string key;
+        uint32_t type = 0;
+        string str;
+        Zset zset;
+};
+
+static Entry *entry_new(uint32_t type) {
+    Entry *ent = new Entry();
+    ent->type = type;
+    return ent;
+}
+
+static void entry_del(Entry *ent) {
+    if (ent->type == T_ZSET) {
+        zset_clear(&ent->zset);
+    }
+    delete ent;
+}
