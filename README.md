@@ -1,10 +1,10 @@
 #  🐙 Redis-From-Scratch 🐙
 
-A lightweight Redis-like in-memory key-value store implemented from scratch in C++ using the POSIX Socket API. This project is based on the [Build Your Own Redis](https://build-your-own.org/redis/) tutorial, with support for IPv6. Made on WSL
+A lightweight Redis-like in-memory key-value store implemented from scratch in C++ using Socket API. This project is based on the [Build Your Own Redis](https://build-your-own.org/redis/) tutorial, with support for IPv6. Made on WSL
 
 ## Pre-requisite
 1. C++ compatible serve
-2. Linux/WSL 🐧
+2. Linux/WSL 
 
 ## 📍 Running 
 
@@ -23,3 +23,4 @@ A lightweight Redis-like in-memory key-value store implemented from scratch in C
    
    ./client
    ```
+
