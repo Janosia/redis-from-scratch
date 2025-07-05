@@ -1,9 +1,11 @@
+// C++ imports
 #include <iostream>
 #include <cstring>
 #include <vector>
+#include <cassert>
 
+// Project Imports
 #include "zset.h"
-#include "server.cpp"
 #include "common.h"
 
 static ZNode *znode_new(const char *name, size_t len, double score){
