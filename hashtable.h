@@ -22,6 +22,13 @@ struct HMap{
     size_t migrate_pos=0;
 };
 
+class Hkey{
+    public:
+        HNode node;
+        const char *name = NULL;
+        size_t len = 0;
+};
+
 HNode *hm_lookup(HMap *hmap, HNode *key, bool (*eq)(HNode *, HNode*));
 void *hm_insert(HMap *hmap, HNode *node);
 HNode *h_delete(HMap *hmap, HNode *key, bool(*eq) (HNode*, HNode*));
