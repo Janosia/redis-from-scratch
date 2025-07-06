@@ -29,5 +29,5 @@ static void zset_update(Zset *zset, ZNode *node, double score);
 ZNode *zset_seekge(Zset *zset, double score, const char *name, size_t len);
 ZNode *znode_offset(ZNode *node , int64_t offset);
 
-// RANK QUERIES -> subtree size is modified
+// RANK QUERIES -> subtree size is modified : implemented in avl.cpp file
 // the rank difference withing each parent and child is subtree size+1
