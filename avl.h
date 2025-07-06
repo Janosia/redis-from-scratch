@@ -12,7 +12,7 @@ class AVLNode{
         AVLNode *left = NULL;
         AVLNode *right = NULL;
         uint32_t height = 0; // ht
-        uint32_t cnt = 0;  // size 
+        uint32_t cnt = 0;  // size of augmented subtree : size of subtree is augmented for rank queries
 };
 inline void avl_init(AVLNode *node){
     node->left = node->right = node->parent = NULL;
