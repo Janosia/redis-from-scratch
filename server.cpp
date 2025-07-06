@@ -1,12 +1,16 @@
+// C imports
 #include <errno.h>
-
 #include <poll.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <math.h>
+
+// Socket API imports
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/ip.h>
 
+// C++ imports
 #include <iostream>
 #include <cassert>
 #include <string>
@@ -14,66 +18,15 @@
 #include <vector>
 #include <map>
 
-
+// Project imports
 #include "hashtable.h"
+#include "zset.h"
+#include "common.h"
+#include "server_helper.h"
+
 using namespace std;
 
-/* struct sockaddr_in6 {
-    uint16_t        sin6_family;    AF_INET6
-    uint16_t        sin6_port;     port in big-endian
-    uint32_t        sin6_flowinfo; ignore
-    struct in6_addr sin6_addr;     IPv6
-    uint32_t        sin6_scope_id; ignore
-};
-
-struct in6_addr {
-    vector<uint8_t> s6_addr(16);    IPv6
-};*/
-
-
-// REMOVE THIS IF ANY VIRTUAL FUNCTION IS INTRODUCED
-#define container_of(ptr, T, member) \
-    ((T *)( (char *)ptr - offsetof(T, member) ))
-
-const size_t k_max_msg = 32 <<20, k_max_args = 200 *1000;
-typedef vector<uint8_t>Buffer;
-
-
-struct Conn {
-    int fd = -1;
-
-    // what (woman) application wants 
-    bool want_read = false;
-    bool want_write = false;
-    bool want_close = false;
-
-    Buffer incoming;
-    Buffer outgoing;
-};
-
-// error codes 
-enum ErrorCode {
-    ERR_UNKNOWN = -1,
-    ERR_TOO_BIG = -2,
-};
-
-// DATA TYPE CODES
-enum{
-    TAG_NIL = 0,    // nil
-    TAG_ERR = 1,    // error code + msg
-    TAG_STR = 2,    // string
-    TAG_INT = 3,    // int64
-    TAG_DBL = 4,    // double
-    TAG_ARR = 5,    // array
-};
-
-static struct {HMap db;}g_data; // kv store
-
-struct Entry{
-    struct HNode node;
-    string key;
-    string val;
-};
+static struct {HMap db;}g_data; // top level
 
 // comparison function for Entry
 static bool equality(HNode *lhs, HNode *rhs){
@@ -81,13 +34,6 @@ static bool equality(HNode *lhs, HNode *rhs){
     struct Entry *re = container_of(rhs, struct Entry, node);
     return le->key==re->key;
 }
-
-struct LookupKey{
-    HNode node;
-    string key;
-};
-
-
 
 static void msg(const char *msg) { cerr << msg <<endl;}
 
@@ -227,20 +173,9 @@ static bool entry_eq(HNode *lhs, HNode *rhs) {
     return le->key == re->key;
 }
 
-
-// just create hash here 
-static uint64_t  str_hash(const uint8_t *data, size_t len){
-    uint32_t h = 0x811C9DC5;
-    for(size_t i=0; i<len; i++){
-        h = (h+data[i]) * 0x01000193;
-    }
-    return h;
-}
-
-
 static void do_get(vector<string>&cmd, Buffer &out){
     // dummy entry 
-    Entry key;
+    LookupKey key;
     key.key.swap(cmd[1]);
     key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
     // lookup 
@@ -249,13 +184,16 @@ static void do_get(vector<string>&cmd, Buffer &out){
     if(!node) return out_nil(out);
     
     // copy value and send back
-    string &val = container_of(node, Entry, node)->val;
-    return out_str(out, val.data(), val.size());
+    Entry *ent = container_of(node, Entry, node);
+    if(ent->type != T_STR){
+        return out_err(out, ERR_BAD_TYP, "not a string value");
+    }
+    return out_str(out, ent->str.data(), ent->str.size());
 }
 
 static void do_set(vector<string>&cmd, Buffer &out){
     // dummy entry
-    Entry key;
+    LookupKey key;
     key.key.swap(cmd[1]);
     key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
     
@@ -264,17 +202,20 @@ static void do_set(vector<string>&cmd, Buffer &out){
     
     if( node ){
         // update the obtained value from lookup
-        container_of(node, Entry, node)->val.swap(cmd[2]);
+        Entry *ent = container_of(node, Entry, node);
+        if (ent->type != T_STR) {
+            return out_err(out, ERR_BAD_TYP, "a non-string value exists");
+        }
+        ent->str.swap(cmd[2]);
     }else{ // nothing found 
         // create and insert new pair
         Entry *ent = new Entry();
         ent->key.swap(key.key);
         ent->node.hcode = key.node.hcode;
-        ent->val.swap(cmd[2]);
+        ent->str.swap(cmd[2]);
         // insertion
         hm_insert(&g_data.db, &ent->node);
     }
-    
     return out_nil(out);
 }
 
@@ -449,6 +390,124 @@ static void handle_read(Conn *conn){
     }
 }
 
+static size_t out_begin_arr(Buffer &out) {
+    out.push_back(TAG_ARR);
+    buf_append_u32(out, 0);     
+    return out.size() - 4;     
+}
+static void out_end_arr(Buffer &out, size_t ctx, uint32_t n) {
+    assert(out[ctx - 1] == TAG_ARR);
+    memcpy(&out[ctx], &n, 4);
+}
+
+static bool str2dbl(const string &s, double &out) {
+    char *endp = NULL;
+    out = strtod(s.c_str(), &endp);
+    return endp == s.c_str() + s.size() && !isnan(out);
+}
+
+static bool str2int(const string &s, int64_t &out) {
+    char *endp = NULL;
+    out = strtoll(s.c_str(), &endp, 10);
+    return endp == s.c_str() + s.size();
+}
+
+static void do_zadd(vector<string>&cmd, Buffer &out){
+    double score = 0;
+    if(!str2dbl(cmd[2], score)){
+        return out_err(out, ERR_BAD_ARG , "expect float");
+    }
+    LookupKey key;
+    key.key.swap(cmd[1]);
+    key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
+    HNode *hnode = hm_lookup(&g_data.db, &key.node, &entry_eq);
+
+    Entry *ent = NULL;
+    if(!hnode ){
+        ent = entry_new(T_ZSET);
+        ent->key.swap(key.key);
+        ent->node.hcode = key.node.hcode;
+        hm_insert(&g_data.db, &ent->node); 
+    }else{
+        ent = container_of(hnode, Entry, node);
+        if (ent->type != T_ZSET) {
+            return out_err(out, ERR_BAD_TYP, "expect zset");
+        }
+    }
+
+    const string &name = cmd[3];
+    bool added = zset_insert(&ent->zset, name.data(), name.size(), score);
+    return out_int(out, (int64_t)added);
+}
+
+static const Zset k_empty_zset;
+
+static Zset *expect_zset(string s){
+    LookupKey key;
+    key.key.swap(s);
+    key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
+    HNode *hnode = hm_lookup(&g_data.db, &key.node, &entry_eq);
+    if (!hnode) {   
+        return (Zset *)&k_empty_zset;
+    }
+    Entry *ent = container_of(hnode, Entry, node);
+    return ent->type == T_ZSET ? &ent->zset : NULL;
+}
+
+static void do_zrem(vector<string>&cmd, Buffer &out){
+    Zset *zset = expect_zset(cmd[1]);
+    if(!zset){
+        return out_err(out, ERR_BAD_TYP, "expect zset");
+    }
+    const string &name = cmd[2];
+    ZNode *znode = zset_lookup(zset, name.data(), name.size());
+    if (znode) {
+        zset_delete(zset, znode);
+    }
+    return out_int(out, znode ? 1 : 0);
+}
+
+static void do_zscore(vector<string>&cmd, Buffer &out){
+    Zset *zset = expect_zset(cmd[1]);
+    if(!zset){
+        return out_err(out, ERR_BAD_TYP, "expect zset");
+    }
+    const string &name = cmd[2];
+}
+
+static void do_zquery(vector<string>&cmd, Buffer &out){
+    double score =0;
+    if(!str2dbl(cmd[2], score)){
+        return out_err(out, ERR_BAD_ARG, "expect fp number");
+    }
+    const string &name = cmd[3];
+    int64_t offset =0, limit =0;
+    
+    if(!str2int(cmd[4], offset) || !str2int(cmd[5], limit)){
+        return out_err(out, ERR_BAD_ARG, "expect int");
+    }
+    Zset *zset = expect_zset(cmd[1]);
+    if(!zset){
+        return out_err(out, ERR_BAD_TYP, "expect zset");
+    }
+
+    if(limit <= 0){
+        return out_arr(out, 0);
+    }
+    
+    ZNode *znode = zset_seekge(zset, score, name.data(), name.size());
+    znode = znode_offset(znode, offset);
+
+    size_t  ctx = out_begin_arr(out);
+    int64_t n =0;
+    while(znode && n < limit){
+        out_str(out, znode->name, znode->len);
+        out_dbl(out, znode->score);
+        znode = znode_offset(znode, +1);
+        n +=2;
+    }
+    out_end_arr(out, ctx, (uint32_t)n);
+}
 
 int main() {
     
