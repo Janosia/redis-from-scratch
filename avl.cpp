@@ -177,14 +177,34 @@ static AVLNode * predeccessor(AVLNode *node){
     }
     return node;
 }
+
+
 AVLNode *avl_offset(AVLNode *node, int64_t offset){
     // offseting by "d" -> moving up/down until height difference is "d"
     int64_t pos = 0; // rank diff from starting node
-    for(; offset < 0 && node; offset-- ){
-        node = successor(node);
+    // uses lowest common ancestor : go up/down at most once -> O(logn)
+    while(offset != pos){
+        if(pos < offset && pos+avl_cnt(node->right) >= offset){
+            // target in right
+            node = node->right;
+            pos += avl_cnt(node->left) + 1;
+        }else if (pos > offset && pos - avl_cnt(node->left) <= offset) {
+            // target in left
+            node = node->left;
+            pos -= avl_cnt(node->right) + 1;
+        } else {
+            // go to parent
+            AVLNode *parent = node->parent;
+            if (!parent) {
+                return NULL;
+            }
+            if (parent->right == node) {
+                pos -= avl_cnt(node->left) + 1;
+            } else {
+                pos += avl_cnt(node->right) + 1;
+            }
+            node = parent;
+        }
+        return node;
     }
-    for(; offset >  0 && node ; offset++){
-        node = predeccessor(node);
-    }
-    return node;
 }
