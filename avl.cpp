@@ -11,6 +11,7 @@ static uint32_t max(uint32_t lhs, uint32_t rhs) {
 
 static void avl_update(AVLNode *node) {
     node->height = 1 + max(avl_height(node->left), avl_height(node->right));
+    // propogating subtree size alongwith subtree ht
     node->cnt = 1 + avl_cnt(node->left) + avl_cnt(node->right);
 }
 
@@ -146,4 +147,44 @@ AVLNode *avl_del(AVLNode *node) {
     }
     *from = victim;
     return root;
+}
+
+static AVLNode * successor(AVLNode *node){
+    // leftmost node in right subtree
+    if(node -> right){
+        for(node = node->right; node->left ; node = node->left){}
+        return node;
+    }
+    while(AVLNode *parent = node->parent){
+        if(node == parent->left){
+            return parent;
+        }
+        node = parent;
+    }
+    return node;
+}
+static AVLNode * predeccessor(AVLNode *node){
+    // rightmost node in left subtree
+    if(node -> left){
+        for(node = node->left; node->right ; node = node->right){}
+        return node;
+    }
+    while(AVLNode *parent = node->parent){
+        if(node == parent->right){
+            return parent;
+        }
+        node = parent;
+    }
+    return node;
+}
+AVLNode *avl_offset(AVLNode *node, int64_t offset){
+    // offseting by "d" -> moving up/down until height difference is "d"
+    int64_t pos = 0; // rank diff from starting node
+    for(; offset < 0 && node; offset-- ){
+        node = successor(node);
+    }
+    for(; offset >  0 && node ; offset++){
+        node = predeccessor(node);
+    }
+    return node;
 }
