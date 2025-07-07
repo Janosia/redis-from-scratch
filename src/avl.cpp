@@ -178,7 +178,6 @@ static AVLNode * predeccessor(AVLNode *node){
     return node;
 }
 
-
 AVLNode *avl_offset(AVLNode *node, int64_t offset){
     // offseting by "d" -> moving up/down until height difference is "d"
     int64_t pos = 0; // rank diff from starting node

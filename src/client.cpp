@@ -1,10 +1,13 @@
+// C imports
 #include <errno.h>
 #include <unistd.h>
 
+// Socket API import
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/ip.h>
 
+// C++ imports
 #include <cassert>
 #include <iostream>
 #include <vector>
@@ -18,18 +21,6 @@ static void die(const char *msg) {
     cerr << "[" << err <<"] "<< msg <<endl; 
     abort();
 }
-
-// struct sockaddr_in6 {
-//     uint16_t        sin6_family;   // AF_INET6
-//     uint16_t        sin6_port;     // port in big-endian
-//     uint32_t        sin6_flowinfo; // ignore
-//     struct in6_addr sin6_addr;     // IPv6
-//     uint32_t        sin6_scope_id; // ignore
-// };
-
-// struct in6_addr {
-//     vector<uint8_t>s6_addr(16);   // IPv6
-// };
 
 static void msg(const char *msg) { cerr << msg <<endl;}
 

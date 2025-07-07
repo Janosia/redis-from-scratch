@@ -3,7 +3,6 @@
 #include <poll.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <math.h>
 
 // Socket API imports
 #include <arpa/inet.h>
@@ -23,17 +22,9 @@
 #include "zset.h"
 #include "common.h"
 #include "server_helper.h"
+#include "zset_cmd.h"
 
 using namespace std;
-
-static struct {HMap db;}g_data; // top level
-
-// comparison function for Entry
-static bool equality(HNode *lhs, HNode *rhs){
-    struct Entry *le = container_of(lhs, struct Entry, node);
-    struct Entry *re = container_of(rhs, struct Entry, node);
-    return le->key==re->key;
-}
 
 static void msg(const char *msg) { cerr << msg <<endl;}
 
@@ -62,55 +53,10 @@ static void fd_set_nb(int fd){
 }
 
 // add to back
-static void buf_append(Buffer &buf, const uint8_t*data, size_t len) {
-    buf.insert(buf.end(), data, data+len);}
-
-    // serilized data 
-static void buf_append_u8(Buffer &buf, uint8_t data) {
-    buf.push_back(data);
-}
-static void buf_append_u32(Buffer &buf, uint32_t data) {
-    buf_append(buf, (const uint8_t *)&data, 4); 
-}
-static void buf_append_i64(Buffer &buf, int64_t data) {
-    buf_append(buf, (const uint8_t *)&data, 8);
-}
-static void buf_append_dbl(Buffer &buf, double data) {
-    buf_append(buf, (const uint8_t *)&data, 8);
-}
-
-static void out_nil(Buffer &out){
-    buf_append_u8(out, TAG_NIL);
-}
-static void out_str(Buffer &out, const char *s, size_t size){
-    buf_append_u8(out, TAG_STR);
-    buf_append_u32(out, (uint32_t)size);
-    buf_append(out, (const uint8_t *)s, size);
-}
-
-static void out_int(Buffer &out, int64_t val) {
-    buf_append_u8(out, TAG_INT);
-    buf_append_i64(out, val);
-}
-static void out_arr(Buffer &out, uint32_t n) {
-    buf_append_u8(out, TAG_ARR);
-    buf_append_u32(out, n);
-}
-static void out_dbl(Buffer &out, double val) {
-    buf_append_u8(out, TAG_DBL);
-    buf_append_dbl(out, val);
-}
-static void out_err(Buffer &out, uint32_t code, const string &msg) {
-    buf_append_u8(out, TAG_ERR);
-    buf_append_u32(out, code);
-    buf_append_u32(out, (uint32_t)msg.size());
-    buf_append(out, (const uint8_t *)msg.data(), msg.size());
-}
 
 // remove from front 
 static void buf_consume(Buffer &buf, size_t n) {
     buf.erase(buf.begin(), buf.begin()+n);}
-
 
 // listening socket is ready    
 static Conn * handle_accept(int fd){
@@ -165,12 +111,6 @@ static int32_t parse_req(const uint8_t *data, size_t size, vector<string>&out){
     }
     if(data != end) return -1;
     return 0;
-}
-
-static bool entry_eq(HNode *lhs, HNode *rhs) {
-    struct Entry *le = container_of(lhs, struct Entry, node);
-    struct Entry *re = container_of(rhs, struct Entry, node);
-    return le->key == re->key;
 }
 
 static void do_get(vector<string>&cmd, Buffer &out){
@@ -245,20 +185,6 @@ static void do_keys(vector<string> &, Buffer &out) {
     out_arr(out, (uint32_t)hm_size(&g_data.db));
     
     hm_foreach(&g_data.db, &cb_keys, (void *)&out);
-}
-
-static void do_request(vector<string> &cmd, Buffer &out) {
-    if (cmd.size() == 2 && cmd[0] == "get") {
-        return do_get(cmd, out);
-    } else if (cmd.size() == 3 && cmd[0] == "set") {
-        return do_set(cmd, out);
-    } else if (cmd.size() == 2 && cmd[0] == "del") {
-        return do_del(cmd, out);
-    } else if (cmd.size() == 1 && cmd[0] == "keys"){
-        return do_keys(cmd, out);      
-    }else{
-        return out_err(out, ERR_UNKNOWN, "unknown command ");
-    }
 }
 
 static void response_begin(Buffer &out, size_t *header) {
@@ -390,123 +316,26 @@ static void handle_read(Conn *conn){
     }
 }
 
-static size_t out_begin_arr(Buffer &out) {
-    out.push_back(TAG_ARR);
-    buf_append_u32(out, 0);     
-    return out.size() - 4;     
-}
-static void out_end_arr(Buffer &out, size_t ctx, uint32_t n) {
-    assert(out[ctx - 1] == TAG_ARR);
-    memcpy(&out[ctx], &n, 4);
-}
-
-static bool str2dbl(const string &s, double &out) {
-    char *endp = NULL;
-    out = strtod(s.c_str(), &endp);
-    return endp == s.c_str() + s.size() && !isnan(out);
-}
-
-static bool str2int(const string &s, int64_t &out) {
-    char *endp = NULL;
-    out = strtoll(s.c_str(), &endp, 10);
-    return endp == s.c_str() + s.size();
-}
-
-static void do_zadd(vector<string>&cmd, Buffer &out){
-    double score = 0;
-    if(!str2dbl(cmd[2], score)){
-        return out_err(out, ERR_BAD_ARG , "expect float");
-    }
-    LookupKey key;
-    key.key.swap(cmd[1]);
-    key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
-    HNode *hnode = hm_lookup(&g_data.db, &key.node, &entry_eq);
-
-    Entry *ent = NULL;
-    if(!hnode ){
-        ent = entry_new(T_ZSET);
-        ent->key.swap(key.key);
-        ent->node.hcode = key.node.hcode;
-        hm_insert(&g_data.db, &ent->node); 
+static void do_request(vector<string> &cmd, Buffer &out) {
+    if (cmd.size() == 2 && cmd[0] == "get") {
+        return do_get(cmd, out);
+    } else if (cmd.size() == 3 && cmd[0] == "set") {
+        return do_set(cmd, out);
+    } else if (cmd.size() == 2 && cmd[0] == "del") {
+        return do_del(cmd, out);
+    } else if (cmd.size() == 1 && cmd[0] == "keys"){
+        return do_keys(cmd, out);      
+    }else if (cmd.size() == 4 && cmd[0] == "zadd") {
+        return do_zadd(cmd, out);
+    } else if (cmd.size() == 3 && cmd[0] == "zrem") {
+        return do_zrem(cmd, out);
+    } else if (cmd.size() == 3 && cmd[0] == "zscore") {
+        return do_zscore(cmd, out);
+    } else if (cmd.size() == 6 && cmd[0] == "zquery") {
+        return do_zquery(cmd, out);
     }else{
-        ent = container_of(hnode, Entry, node);
-        if (ent->type != T_ZSET) {
-            return out_err(out, ERR_BAD_TYP, "expect zset");
-        }
+        return out_err(out, ERR_UNKNOWN, "unknown command ");
     }
-
-    const string &name = cmd[3];
-    bool added = zset_insert(&ent->zset, name.data(), name.size(), score);
-    return out_int(out, (int64_t)added);
-}
-
-static const Zset k_empty_zset;
-
-static Zset *expect_zset(string s){
-    LookupKey key;
-    key.key.swap(s);
-    key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
-    HNode *hnode = hm_lookup(&g_data.db, &key.node, &entry_eq);
-    if (!hnode) {   
-        return (Zset *)&k_empty_zset;
-    }
-    Entry *ent = container_of(hnode, Entry, node);
-    return ent->type == T_ZSET ? &ent->zset : NULL;
-}
-
-static void do_zrem(vector<string>&cmd, Buffer &out){
-    Zset *zset = expect_zset(cmd[1]);
-    if(!zset){
-        return out_err(out, ERR_BAD_TYP, "expect zset");
-    }
-    const string &name = cmd[2];
-    ZNode *znode = zset_lookup(zset, name.data(), name.size());
-    if (znode) {
-        zset_delete(zset, znode);
-    }
-    return out_int(out, znode ? 1 : 0);
-}
-
-static void do_zscore(vector<string>&cmd, Buffer &out){
-    Zset *zset = expect_zset(cmd[1]);
-    if(!zset){
-        return out_err(out, ERR_BAD_TYP, "expect zset");
-    }
-    const string &name = cmd[2];
-}
-
-static void do_zquery(vector<string>&cmd, Buffer &out){
-    double score =0;
-    if(!str2dbl(cmd[2], score)){
-        return out_err(out, ERR_BAD_ARG, "expect fp number");
-    }
-    const string &name = cmd[3];
-    int64_t offset =0, limit =0;
-    
-    if(!str2int(cmd[4], offset) || !str2int(cmd[5], limit)){
-        return out_err(out, ERR_BAD_ARG, "expect int");
-    }
-    Zset *zset = expect_zset(cmd[1]);
-    if(!zset){
-        return out_err(out, ERR_BAD_TYP, "expect zset");
-    }
-
-    if(limit <= 0){
-        return out_arr(out, 0);
-    }
-    
-    ZNode *znode = zset_seekge(zset, score, name.data(), name.size());
-    znode = znode_offset(znode, offset);
-
-    size_t  ctx = out_begin_arr(out);
-    int64_t n =0;
-    while(znode && n < limit){
-        out_str(out, znode->name, znode->len);
-        out_dbl(out, znode->score);
-        znode = znode_offset(znode, +1);
-        n +=2;
-    }
-    out_end_arr(out, ctx, (uint32_t)n);
 }
 
 int main() {
