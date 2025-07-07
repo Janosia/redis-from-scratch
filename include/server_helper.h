@@ -100,8 +100,25 @@ static void out_end_arr(Buffer &out, size_t ctx, uint32_t n);
 static bool str2dbl(const string &s, double &out);
 static bool str2int(const string &s, int64_t &out);
 
-static void buf_append_u8(Buffer &buf, uint8_t data);
-static void buf_append(Buffer &buf, const uint8_t*data, size_t len);
-static void buf_append_u32(Buffer &buf, uint32_t data);
-static void buf_append_i64(Buffer &buf, int64_t data);
-static void buf_append_dbl(Buffer &buf, double data);
+
+// data serialization in response
+
+inline static void buf_append(Buffer &buf, const uint8_t*data, size_t len){
+    buf.insert(buf.end(), data, data+len);
+};
+
+inline static void buf_append_u8(Buffer &buf, uint8_t data){
+    buf.push_back(data);
+}
+
+inline static void buf_append_u32(Buffer &buf, uint32_t data){
+    buf_append(buf, (const uint8_t *)&data, 4);
+};
+
+inline static void buf_append_i64(Buffer &buf, int64_t data){
+    buf_append(buf, (const uint8_t *)&data, 8);
+};
+
+inline static void buf_append_dbl(Buffer &buf, double data){
+    buf_append(buf, (const uint8_t *)&data, 8);
+};
