@@ -1,5 +1,10 @@
+#pragma once
+
 #include <iostream>
 
+using namespace std;
+
+/* Using doubly linked list so that detach from middle is possible*/
 class Dlist{
     public:
         Dlist *prev = NULL;
