@@ -18,24 +18,6 @@ static bool entry_eq(HNode *lhs, HNode *rhs) {
     return le->key == re->key;
 }
 
-static void buf_append(Buffer &buf, const uint8_t*data, size_t len) {
-    buf.insert(buf.end(), data, data+len);
-}
-
-// serilized data 
-static void buf_append_u8(Buffer &buf, uint8_t data) {
-    buf.push_back(data);
-}
-static void buf_append_u32(Buffer &buf, uint32_t data) {
-    buf_append(buf, (const uint8_t *)&data, 4); 
-}
-static void buf_append_i64(Buffer &buf, int64_t data) {
-    buf_append(buf, (const uint8_t *)&data, 8);
-}
-static void buf_append_dbl(Buffer &buf, double data) {
-    buf_append(buf, (const uint8_t *)&data, 8);
-}
-
 static void out_nil(Buffer &out){
     buf_append_u8(out, TAG_NIL);
 }
