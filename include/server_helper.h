@@ -8,12 +8,19 @@
 #include "hashtable.h"
 #include "common.h"
 #include "zset.h"
+#include "dl_list.h"
 
 using namespace std;
 
-const size_t k_max_msg = 32 <<20, k_max_args = 200 *1000;
+const size_t k_max_msg = 32 << 20, k_max_args = 200 *1000;
 typedef vector<uint8_t>Buffer;
-static struct {HMap db;}g_data; // top level
+
+// global state
+static struct {
+    HMap db;
+    vector<Conn *>fd2conn;
+    Dlist idle_list;
+}g_data; // top level
 
 // error codes 
 enum ErrorCode {
@@ -50,6 +57,10 @@ class Conn {
 
         Buffer incoming;
         Buffer outgoing;
+
+        // timer
+        uint64_t last_active_ms =0;
+        Dlist idle_node;
 };
 
 class LookupKey{
