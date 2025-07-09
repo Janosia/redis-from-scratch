@@ -23,8 +23,11 @@
 #include "common.h"
 #include "server_helper.h"
 #include "zset_cmd.h"
+#include "dl_list.h"
+#include "timer.h"
 
 using namespace std;
+
 
 static void msg(const char *msg) { cerr << msg <<endl;}
 
@@ -37,47 +40,100 @@ static void die(const char *msg) {
 }
 
 static void fd_set_nb(int fd){
-    errno =0;
+    errno = 0;
     int flags = fcntl(fd, F_GETFL, 0);
-    if(errno){
+    
+    if( errno ){
         die("fcntl error");
         return;
     }
 
     flags |= O_NONBLOCK;
 
-    errno=0;
+    errno = 0;
+    
     (void)fcntl(fd, F_SETFL, flags);
     
     if(errno) die("fcntl error");
 }
-
-// add to back
 
 // remove from front 
 static void buf_consume(Buffer &buf, size_t n) {
     buf.erase(buf.begin(), buf.begin()+n);}
 
 // listening socket is ready    
-static Conn * handle_accept(int fd){
+static int32_t handle_accept(int fd){
     struct sockaddr_in6 client_addr={};
     socklen_t addrlen = sizeof(client_addr);
     int connfd = accept(fd, (struct sockaddr *)&client_addr, &addrlen);
-    if(connfd < 0 ){
+    
+    if( connfd < 0 ){
         msg_errno("accept() error");
         return NULL;
     }
     // Using ipv6
     char ip_str[INET6_ADDRSTRLEN];
+    
     inet_ntop(AF_INET6, &client_addr.sin6_addr, ip_str, sizeof(ip_str));
-    cerr << "new client from %u.%u.%u.%u.%u "<<ip_str <<ntohs(client_addr.sin6_port)<<endl;  
-    fd_set_nb(connfd); // NON-BLOCKING MODE
+    
+    cerr << "new client from "<< ip_str << " "<<ntohs(client_addr.sin6_port)<<endl;  
 
+    fd_set_nb(connfd); // connection set to NON-BLOCKING MODE
+
+    //Creating new connection
     Conn *conn = new Conn();
+    // cout << "created new Conn structure"<<endl;
     conn->fd = connfd;
     conn->want_read = true;
-    return conn;
+    conn->last_active_ms = get_monotonic_msec();
+    /*cout << &g_data.idle_list << endl;
+    cout << &conn->idle_node << endl;*/
+    dlist_inint(&g_data.idle_list);     
+    dlist_inint(&conn->idle_node); 
+    dlist_insert(&g_data.idle_list, &conn->idle_node);
+    if(g_data.fd2conn.size() <= (size_t)connfd){
+        g_data.fd2conn.resize(conn->fd+1);
+    }
+    
+    assert(!g_data.fd2conn[conn->fd]);
+    g_data.fd2conn[conn->fd] = conn; 
+    
+    return 0;
 }
+/*@brief : destroying a socket*/
+static void conn_destroy(Conn *conn){
+    (void)close(conn->fd);
+    g_data.fd2conn[conn->fd] = NULL;
+    dlist_detach(&conn->idle_node);
+    delete(conn);
+}
+static void process_timers(){
+    uint64_t now_ms = get_monotonic_msec();
+    while(!dlist_empty(&g_data.idle_list)){
+        Conn *conn = container_of(g_data.idle_list.next, Conn, idle_node);
+        uint64_t next_ms = conn->last_active_ms =k_idle_timeout_ms;
+        if(next_ms >=now_ms){
+            break;
+        }
+        cerr << "removing idle connection "<< conn->fd<<endl;
+        conn_destroy(conn);
+    }
+}
+uint32_t next_timer_ms(){
+    if (dlist_empty(&g_data.idle_list)) return -1;
+    uint64_t now_ms = get_monotonic_msec();
+    Conn *conn = NULL;
+    if(g_data.idle_list.next != NULL){
+        cout << " idle_list is not NULL"<<endl; 
+        conn = container_of(g_data.idle_list.next, Conn, idle_node);
+        uint64_t next_ms = conn->last_active_ms +k_idle_timeout_ms;
+        if(next_ms <=now_ms) return 0;
+        return (int32_t)(next_ms-now_ms);
+    }
+    cout << "conn created; probably accessing weird stuff here";
+    return -1;
+}
+
 
 //helper function
 static bool read_u32(const uint8_t *&cur, const uint8_t *end, uint32_t &out){
@@ -205,6 +261,28 @@ static void response_end(Buffer &out, size_t header) {
     memcpy(&out[header], &len, 4);
 }
 
+static void do_request(vector<string> &cmd, Buffer &out) {
+    if (cmd.size() == 2 && cmd[0] == "get") {
+        return do_get(cmd, out);
+    } else if (cmd.size() == 3 && cmd[0] == "set") {
+        return do_set(cmd, out);
+    } else if (cmd.size() == 2 && cmd[0] == "del") {
+        return do_del(cmd, out);
+    } else if (cmd.size() == 1 && cmd[0] == "keys"){
+        return do_keys(cmd, out);      
+    }else if (cmd.size() == 4 && cmd[0] == "zadd") {
+        return do_zadd(cmd, out);
+    } else if (cmd.size() == 3 && cmd[0] == "zrem") {
+        return do_zrem(cmd, out);
+    } else if (cmd.size() == 3 && cmd[0] == "zscore") {
+        return do_zscore(cmd, out);
+    } else if (cmd.size() == 6 && cmd[0] == "zquery") {
+        return do_zquery(cmd, out);
+    }else{
+        return out_err(out, ERR_UNKNOWN, "unknown command ");
+    }
+}
+
 
 static bool try_one_request(Conn *conn){
     if(conn->incoming.size() <4) return false;
@@ -272,12 +350,15 @@ static int32_t write_all(int fd, const uint8_t *buf, size_t n) {
 static void handle_write(Conn *conn){
     assert(conn->outgoing.size()>0);
     ssize_t rv = write(conn->fd, &conn->outgoing[0], conn->outgoing.size());
+    
     if(rv<0 && errno == EAGAIN) return ;
+    
     if(rv<0){
         msg_errno("write() error");
         conn->want_close = true;
         return;
     }
+    
     buf_consume(conn->outgoing, (size_t)rv);
 
     if(conn->outgoing.size() == 0){
@@ -316,27 +397,7 @@ static void handle_read(Conn *conn){
     }
 }
 
-static void do_request(vector<string> &cmd, Buffer &out) {
-    if (cmd.size() == 2 && cmd[0] == "get") {
-        return do_get(cmd, out);
-    } else if (cmd.size() == 3 && cmd[0] == "set") {
-        return do_set(cmd, out);
-    } else if (cmd.size() == 2 && cmd[0] == "del") {
-        return do_del(cmd, out);
-    } else if (cmd.size() == 1 && cmd[0] == "keys"){
-        return do_keys(cmd, out);      
-    }else if (cmd.size() == 4 && cmd[0] == "zadd") {
-        return do_zadd(cmd, out);
-    } else if (cmd.size() == 3 && cmd[0] == "zrem") {
-        return do_zrem(cmd, out);
-    } else if (cmd.size() == 3 && cmd[0] == "zscore") {
-        return do_zscore(cmd, out);
-    } else if (cmd.size() == 6 && cmd[0] == "zquery") {
-        return do_zquery(cmd, out);
-    }else{
-        return out_err(out, ERR_UNKNOWN, "unknown command ");
-    }
-}
+
 
 int main() {
     
@@ -361,18 +422,16 @@ int main() {
     
     rv = listen(fd, SOMAXCONN);
     if (rv) die("listen()");
-    
 
-    vector<Conn *>fd2Conn;
-
+    // event loop
     vector<struct pollfd> poll_args;
     while (true) {
-
+        
         poll_args.clear();
         struct pollfd pfd = {fd, POLLIN,0};
         poll_args.push_back(pfd);
 
-        for( auto conn : fd2Conn){
+        for( Conn *conn : g_data.fd2conn){
             
             if(!conn) continue;
             
@@ -385,6 +444,8 @@ int main() {
             poll_args.push_back(pfd);
         }
 
+        // waiting for readiness 
+        int32_t timeout_ms = next_timer_ms();
         int rv = poll(poll_args.data(), (nfds_t)poll_args.size(), -1);
         
         if( rv < 0 && errno == EINTR) continue;
@@ -392,11 +453,7 @@ int main() {
         if( rv < 0 ) die("poll");
 
         if( poll_args[0].revents ){
-            if(Conn *conn = handle_accept(fd)){
-                if( fd2Conn.size() <=(size_t)conn->fd) fd2Conn.resize(conn->fd+1);
-                assert( !fd2Conn[conn->fd]);
-                fd2Conn[conn->fd] = conn;
-            }
+            handle_accept(fd);
         }
 
         for(size_t i=1; i<poll_args.size(); ++i){
@@ -405,8 +462,13 @@ int main() {
             
             if( ready == 0) continue;
             
-            Conn *conn = fd2Conn[poll_args[i].fd];
+            Conn *conn = g_data.fd2conn[poll_args[i].fd];
 
+            conn->last_active_ms = get_monotonic_msec();
+            dlist_detach(&conn->idle_node);
+            dlist_insert(&g_data.idle_list, &conn->idle_node);
+            
+            // handle IO
             if( ready & POLLIN ){
                 assert(conn->want_read);
                 handle_read(conn);
@@ -415,12 +477,15 @@ int main() {
                 assert(conn->want_write);
                 handle_write(conn);
             }
+
+            // closing socket either encountered ERROR or following cmd
             if ( (ready & POLLERR) || conn->want_close ) {
                 (void)close(conn->fd);
-                fd2Conn[conn->fd]=NULL;
+                g_data.fd2conn[conn->fd]=NULL;
                 delete conn;
             }
         }
+        process_timers();
     }
     return 0;
 }
