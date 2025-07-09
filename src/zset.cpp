@@ -8,7 +8,7 @@
 #include "zset.h"
 #include "common.h"
 
-static ZNode *znode_new(const char *name, size_t len, double score){
+ZNode *znode_new(const char *name, size_t len, double score){
     // use malloc instead of new because cpp does not do flexible arrays
     ZNode *node = (ZNode *)malloc(sizeof(ZNode)+len);
     avl_init(&node->tree);
@@ -21,14 +21,14 @@ static ZNode *znode_new(const char *name, size_t len, double score){
 }
 
 // deallocation -> prevents leaking
-static void znode_del(ZNode *node){
+void znode_del(ZNode *node){
     free(node);
 }
-static size_t min(size_t lhs, size_t rhs){
+size_t min(size_t lhs, size_t rhs){
     return lhs < rhs ? lhs : rhs;
 }
 
-static bool hcmp(HNode *node, HNode *key) {
+bool hcmp(HNode *node, HNode *key) {
     ZNode *znode = container_of(node, ZNode, hmap);
     Hkey *hkey = container_of(key, Hkey, node);
     if (znode->len != hkey->len) {
@@ -47,7 +47,7 @@ ZNode *zset_lookup(Zset *zset, const char *name, size_t len){
     return found ? container_of(found, ZNode, hmap): NULL;
 }
 
-static bool zless(AVLNode *lhs, double score, const char *name, size_t len) {
+bool zless(AVLNode *lhs, double score, const char *name, size_t len) {
     ZNode *zl = container_of(lhs, ZNode, tree);
     if (zl->score != score) {
         return zl->score < score;
@@ -56,12 +56,12 @@ static bool zless(AVLNode *lhs, double score, const char *name, size_t len) {
     return (rv != 0) ? (rv < 0) : (zl->len < len);
 }
 
-static bool zless(AVLNode *lhs, AVLNode *rhs){
+bool zless(AVLNode *lhs, AVLNode *rhs){
     ZNode *zr = container_of(rhs, ZNode, tree);
     return zless(lhs, zr->score, zr->name, zr->len);
 }
 
-static void insert(Zset *zset, ZNode *node){
+void insert(Zset *zset, ZNode *node){
     AVLNode *parent = NULL;
     AVLNode **from = &zset->root;
     while(*from){
@@ -84,7 +84,7 @@ bool zset_insert(Zset *zset, const char *name, size_t len, double score){
     return true;
 }
 
-static void zset_update(Zset *zset, ZNode *node, double score){
+void zset_update(Zset *zset, ZNode *node, double score){
     zset->root = avl_del(&node->tree);
     avl_init(&node->tree);
     node->score = score;
@@ -120,7 +120,7 @@ ZNode *znode_offset(ZNode *node, int64_t offset){
     return tnode ? container_of(tnode, ZNode, tree) : NULL;
 }
 
-static void tree_dispose(AVLNode *node) {
+void tree_dispose(AVLNode *node) {
     if (!node) {
         return;
     }
