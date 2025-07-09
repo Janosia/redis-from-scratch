@@ -4,9 +4,9 @@
 #include "server_helper.h"
 #include "common.h"
 
-static const Zset k_empty_zset;
+const Zset k_empty_zset;
 
-static void do_zadd(vector<string>&cmd, Buffer &out){
+void do_zadd(vector<string>&cmd, Buffer &out){
     double score = 0;
     if(!str2dbl(cmd[2], score)){
         return out_err(out, ERR_BAD_ARG , "expect float");
@@ -34,7 +34,7 @@ static void do_zadd(vector<string>&cmd, Buffer &out){
     return out_int(out, (int64_t)added);
 }
 
-static Zset *expect_zset(string s){
+Zset *expect_zset(string s){
     LookupKey key;
     key.key.swap(s);
     key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
@@ -46,7 +46,7 @@ static Zset *expect_zset(string s){
     return ent->type == T_ZSET ? &ent->zset : NULL;
 }
 
-static void do_zrem(vector<string>&cmd, Buffer &out){
+void do_zrem(vector<string>&cmd, Buffer &out){
     Zset *zset = expect_zset(cmd[1]);
     if(!zset){
         return out_err(out, ERR_BAD_TYP, "expect zset");
@@ -59,7 +59,7 @@ static void do_zrem(vector<string>&cmd, Buffer &out){
     return out_int(out, znode ? 1 : 0);
 }
 
-static void do_zscore(vector<string>&cmd, Buffer &out){
+void do_zscore(vector<string>&cmd, Buffer &out){
     Zset *zset = expect_zset(cmd[1]);
     if(!zset){
         return out_err(out, ERR_BAD_TYP, "expect zset");
@@ -67,7 +67,7 @@ static void do_zscore(vector<string>&cmd, Buffer &out){
     const string &name = cmd[2];
 }
 
-static void do_zquery(vector<string>&cmd, Buffer &out){
+void do_zquery(vector<string>&cmd, Buffer &out){
     double score =0;
     if(!str2dbl(cmd[2], score)){
         return out_err(out, ERR_BAD_ARG, "expect fp number");
