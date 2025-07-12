@@ -12,6 +12,8 @@
 #include "common.h"
 #include "zset.h"
 #include "dl_list.h"
+#include "heap.h"
+#include "timer.h"
 
 using namespace std;
 
@@ -64,6 +66,7 @@ struct {
     HMap db;
     vector<Conn *>fd2conn;
     Dlist idle_list;
+    vector<HeapItem>heap;
 }g_data; // top level
 
 class LookupKey{
@@ -79,6 +82,7 @@ class Entry {
         uint32_t type = 0;
         string str;
         Zset zset;
+        size_t h_indx;
 };
 
 // Constructor
@@ -161,3 +165,4 @@ inline void out_end_arr(Buffer &out, size_t ctx, uint32_t n){
 
 bool str2dbl(const string &s, double &out);
 bool str2int(const string &s, int64_t &out);
+void set_ttl(Entry *ent, uint64_t ttl_ms);
