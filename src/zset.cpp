@@ -8,8 +8,9 @@
 #include "zset.h"
 #include "common.h"
 
+
+/*@brief  ZNode constructor. Malloc is used because cpp lacks support for flexible arrays*/
 ZNode *znode_new(const char *name, size_t len, double score){
-    // use malloc instead of new because cpp does not do flexible arrays
     ZNode *node = (ZNode *)malloc(sizeof(ZNode)+len);
     avl_init(&node->tree);
     node->hmap.next = NULL;
@@ -20,7 +21,7 @@ ZNode *znode_new(const char *name, size_t len, double score){
     return node;
 }
 
-// deallocation -> prevents leaking
+/*@brief   deallocation of memory, this is done to prevent leaking*/
 void znode_del(ZNode *node){
     free(node);
 }
@@ -120,6 +121,7 @@ ZNode *znode_offset(ZNode *node, int64_t offset){
     return tnode ? container_of(tnode, ZNode, tree) : NULL;
 }
 
+/*@brief delete entire AVL tree*/
 void tree_dispose(AVLNode *node) {
     if (!node) {
         return;
