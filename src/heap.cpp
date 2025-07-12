@@ -73,3 +73,16 @@ void HeapDelete(vector<HeapItem> &a, size_t pos){
         HeapUpdate(a.data(), pos, a.size());
     }
 }
+/*@brief  Either update or insert item in heap
+@param a  vector of heap items 
+@param pos index where insertion needs to take place 
+@param t item that needs to be inserted*/
+void HeapUpsert(vector<HeapItem>&a, size_t pos, HeapItem  t){
+    if(pos < a.size()){
+        a[pos] = t;
+    }else{
+        pos = a.size();
+        a.push_back(t);
+    }
+    HeapUpdate(a.data(), pos, a.size());
+}
