@@ -14,7 +14,7 @@ class Dlist{
 
 /* @brief : creation function;  
 */
-inline void dlist_inint(Dlist *node){
+inline void dlist_init(Dlist *node){
     node->prev = node->next = node;
 }
 
