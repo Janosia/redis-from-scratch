@@ -85,8 +85,8 @@ static int32_t handle_accept(int fd){
     conn->fd = connfd;
     conn->want_read = true;
     conn->last_active_ms = get_monotonic_msec();
-    dlist_inint(&g_data.idle_list);     
-    dlist_inint(&conn->idle_node); 
+    dlist_init(&g_data.idle_list);     
+    dlist_init(&conn->idle_node); 
     dlist_insert(&g_data.idle_list, &conn->idle_node);
     if(g_data.fd2conn.size() <= (size_t)connfd){
         g_data.fd2conn.resize(conn->fd+1);
@@ -423,6 +423,10 @@ static void handle_read(Conn *conn){
 
 
 int main() {
+    
+    // Intialization
+    dlist_init(&g_data.idle_list);
+    thread_pool_init(&g_data.thread_pool, 4);
     
     int fd = socket(AF_INET6, SOCK_STREAM, 0);
     if ( fd < 0 ) die("socket()");
