@@ -39,3 +39,22 @@ void set_ttl(Entry *ent, uint64_t ttl_ms){
         HeapItem item = {expire_at, &ent->h_indx};
     }
 }
+void do_ttl(vector<string> &cmd, Buffer &out){
+    LookupKey key;
+    key.key.swap(cmd[1]);
+    key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
+
+    HNode *node = hm_lookup(&g_data.db, &key.node, &entry_eq);
+    if (!node) {
+        return out_int(out, -2);    // not found
+    }
+
+    Entry *ent = container_of(node, Entry, node);
+    if (ent->h_indx == (size_t)-1) {
+        return out_int(out, -1);    // no TTL
+    }
+
+    uint64_t expire_at = g_data.heap[ent->h_indx].val;
+    uint64_t now_ms = get_monotonic_msec();
+    return out_int(out, expire_at > now_ms ? (expire_at - now_ms) : 0);
+}
