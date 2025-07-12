@@ -10,3 +10,5 @@ class HeapItem{
 };
 
 void HeapUpdate(HeapItem *a, size_t pos, size_t len);
+void HeapDelete(vector<HeapItem> &a, size_t pos);
+void HeapUpsert(vector<HeapItem>&a, size_t pos, HeapItem  t);
