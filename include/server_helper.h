@@ -14,6 +14,7 @@
 #include "dl_list.h"
 #include "heap.h"
 #include "timer.h"
+#include "thread_pool.h"
 
 using namespace std;
 
@@ -67,6 +68,7 @@ struct {
     vector<Conn *>fd2conn;
     Dlist idle_list;
     vector<HeapItem>heap;
+    ThreadPool thread_pool;
 }g_data; // top level
 
 class LookupKey{
@@ -94,14 +96,33 @@ inline Entry *entry_new(uint32_t type) {
 
 
 // Destructor of entry and also deletes the heap for timers
-inline void entry_del(Entry *ent) {
+inline void entry_del_sync(Entry *ent) {
     if (ent->type == T_ZSET) {
         zset_clear(&ent->zset);
     }
-    set_ttl(ent, -1);
     delete ent;
 }
 
+/*@brief Wrapper function for Entry deletion*/
+inline void entry_del_func(void *arg) {
+    entry_del_sync((Entry *)arg);
+}
+
+/*@brief Unlink Entry from all other data structures. Remove its timer from Heap
+Sizes of all data structures that can be deleted without contex switch are capped at an upper limit
+
+@param ent Entry that needs to be deleted*/
+void entry_del(Entry * ent){
+    set_ttl(ent, -1);
+    size_t set_size = (ent->type == T_ZSET) ? hm_size(&ent->zset.hmap) : 0;
+    const size_t k_large_container_size = 1000; // arbitrary constant value prevents performance form downgrading
+    if (set_size > k_large_container_size) {
+        // context switch neccesary
+        thread_pool_queue(&g_data.thread_pool, &entry_del_func, ent);
+    } else {
+        entry_del_sync(ent);    // delete without context switch
+    } 
+}
 // data serialization in response
 
 inline void buf_append(Buffer &buf, const uint8_t*data, size_t len){
