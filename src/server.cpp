@@ -82,12 +82,9 @@ static int32_t handle_accept(int fd){
 
     //Creating new connection
     Conn *conn = new Conn();
-    // cout << "created new Conn structure"<<endl;
     conn->fd = connfd;
     conn->want_read = true;
     conn->last_active_ms = get_monotonic_msec();
-    /*cout << &g_data.idle_list << endl;
-    cout << &conn->idle_node << endl;*/
     dlist_inint(&g_data.idle_list);     
     dlist_inint(&conn->idle_node); 
     dlist_insert(&g_data.idle_list, &conn->idle_node);
