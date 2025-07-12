@@ -123,14 +123,12 @@ uint32_t next_timer_ms(){
     if (dlist_empty(&g_data.idle_list)) return -1;
     uint64_t now_ms = get_monotonic_msec();
     Conn *conn = NULL;
-    if(g_data.idle_list.next != NULL){
-        cout << " idle_list is not NULL"<<endl; 
+    if(g_data.idle_list.next != NULL){ 
         conn = container_of(g_data.idle_list.next, Conn, idle_node);
         uint64_t next_ms = conn->last_active_ms +k_idle_timeout_ms;
         if(next_ms <=now_ms) return 0;
         return (int32_t)(next_ms-now_ms);
     }
-    cout << "conn created; probably accessing weird stuff here";
     return -1;
 }
 
