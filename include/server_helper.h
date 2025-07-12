@@ -93,11 +93,12 @@ inline Entry *entry_new(uint32_t type) {
 }
 
 
-// Destructor
+// Destructor of entry and also deletes the heap for timers
 inline void entry_del(Entry *ent) {
     if (ent->type == T_ZSET) {
         zset_clear(&ent->zset);
     }
+    set_ttl(ent, -1);
     delete ent;
 }
 
@@ -166,3 +167,4 @@ inline void out_end_arr(Buffer &out, size_t ctx, uint32_t n){
 bool str2dbl(const string &s, double &out);
 bool str2int(const string &s, int64_t &out);
 void set_ttl(Entry *ent, uint64_t ttl_ms);
+void do_ttl(vector<string> &cmd, Buffer &out);
