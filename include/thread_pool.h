@@ -18,7 +18,7 @@ class ThreadPool{
 public:
     vector<pthread_t> threads;
     deque<Work> queue;
-    pthread_mutex_t mu;
+    pthread_mutex_t mu; // mutual exclusion ; lock
     pthread_cond_t notempty;
 };
 
