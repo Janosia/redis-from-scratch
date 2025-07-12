@@ -104,8 +104,14 @@ static void conn_destroy(Conn *conn){
     dlist_detach(&conn->idle_node);
     delete(conn);
 }
+
+static bool hnode_same(HNode *node, HNode *key) {
+    return node == key;
+}
+
 void process_timers(){
     uint64_t now_ms = get_monotonic_msec();
+    // handling idle timers using doubly linked list
     while(!dlist_empty(&g_data.idle_list)){
         Conn *conn = container_of(g_data.idle_list.next, Conn, idle_node);
         uint64_t next_ms = conn->last_active_ms =k_idle_timeout_ms;
@@ -115,8 +121,18 @@ void process_timers(){
         cerr << "removing idle connection "<< conn->fd<<endl;
         conn_destroy(conn);
     }
+    // handling TTL timers using Heap
+    vector<HeapItem>&heap = g_data.heap;
+    const int k_max_works = 2000; // arbitrary constant to ensure that server is not too busy deleting stuff
+    int next_works = 0;
+    while(!heap.empty() && heap[0].val < now_ms && next_works++ < k_max_works){
+        Entry *ent = container_of(heap[0].ref, Entry, h_indx);
+        hm_delete(&g_data.db, &ent->node, &hnode_same);
+        entry_del(ent); // delete the key
+    }
 }
-//helper function
+
+// Helper Functions
 static bool read_u32(const uint8_t *&cur, const uint8_t *end, uint32_t &out){
     if( cur+4 >end) return false;
     memcpy( &out, cur, 4);
@@ -242,6 +258,10 @@ static void response_end(Buffer &out, size_t header) {
     memcpy(&out[header], &len, 4);
 }
 
+
+/*@brief Request Commands
+@param cmd  vector of cmds to perform
+@param out  Buffer where output is displayed*/
 static void do_request(vector<string> &cmd, Buffer &out) {
     if (cmd.size() == 2 && cmd[0] == "get") {
         return do_get(cmd, out);
@@ -264,6 +284,28 @@ static void do_request(vector<string> &cmd, Buffer &out) {
     }
 }
 
+
+/*@brief TTL Commands
+@param cmd  vector of cmds to perform
+@param out  Buffer where output is displayed*/
+static void do_expire(vector<string> &cmd, Buffer &out) {
+    // parse args
+    int64_t ttl_ms = 0;
+    if (!str2int(cmd[2], ttl_ms)) {
+        return out_err(out, ERR_BAD_ARG, "expect int64");
+    }
+    // lookup the key
+    LookupKey key;
+    key.key.swap(cmd[1]);
+    key.node.hcode = str_hash((uint8_t *)key.key.data(), key.key.size());
+    HNode *node = hm_lookup(&g_data.db, &key.node, &entry_eq);
+    // set TTL
+    if (node) {
+        Entry *ent = container_of(node, Entry, node);
+        set_ttl(ent, ttl_ms);
+    }
+    return out_int(out, node ? 1: 0);
+}
 
 static bool try_one_request(Conn *conn){
     if(conn->incoming.size() <4) return false;
