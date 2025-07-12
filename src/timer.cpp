@@ -18,8 +18,7 @@ uint64_t get_monotonic_msec(){
 }
 
 uint32_t next_timer_ms(){
-    if (dlist_empty(&g_data.idle_list)) return -1;
-    uint64_t now_ms = get_monotonic_msec();
+    uint64_t now_ms = get_monotonic_msec(), next_ms = (size_t)-1;
     Conn *conn = NULL;
     // idle timers are handled using Doubly Linked List
     if(g_data.idle_list.next != NULL){ 
@@ -28,5 +27,17 @@ uint32_t next_timer_ms(){
         if(next_ms <=now_ms) return 0;
         return (int32_t)(next_ms-now_ms);
     }
-    return -1;
+    // handling ttl using heap
+    if(!g_data.heap.empty() && g_data.heap[0].val < next_ms){
+        next_ms = g_data.heap[0].val;
+    }
+    if(next_ms == (uint64_t)-1){
+        // expired 
+        return -1;
+    }else if (next_ms <= now_ms){
+        // missed
+        return 0;
+    }
+
+    return  (uint32_t)(now_ms - next_ms);
 }
