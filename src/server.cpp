@@ -104,7 +104,7 @@ static void conn_destroy(Conn *conn){
     dlist_detach(&conn->idle_node);
     delete(conn);
 }
-static void process_timers(){
+void process_timers(){
     uint64_t now_ms = get_monotonic_msec();
     while(!dlist_empty(&g_data.idle_list)){
         Conn *conn = container_of(g_data.idle_list.next, Conn, idle_node);
@@ -116,20 +116,6 @@ static void process_timers(){
         conn_destroy(conn);
     }
 }
-uint32_t next_timer_ms(){
-    if (dlist_empty(&g_data.idle_list)) return -1;
-    uint64_t now_ms = get_monotonic_msec();
-    Conn *conn = NULL;
-    if(g_data.idle_list.next != NULL){ 
-        conn = container_of(g_data.idle_list.next, Conn, idle_node);
-        uint64_t next_ms = conn->last_active_ms +k_idle_timeout_ms;
-        if(next_ms <=now_ms) return 0;
-        return (int32_t)(next_ms-now_ms);
-    }
-    return -1;
-}
-
-
 //helper function
 static bool read_u32(const uint8_t *&cur, const uint8_t *end, uint32_t &out){
     if( cur+4 >end) return false;
