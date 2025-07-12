@@ -5,9 +5,9 @@
 
 using namespace std;
 
-/*@brief calculate left child*/
+/*@brief calculate left child index*/
 size_t heap_left (size_t i)   { return i * 2 + 1; }
-/*@brief calculate right child*/
+/*@brief calculate right child index*/
 size_t heap_right ( size_t i) { return i * 2 + 2; }
 /*@brief calculate index of parent*/
 size_t heap_parent( size_t i ){ return (i+1)/2-1; }
@@ -19,9 +19,11 @@ void HeapUP(HeapItem *a, size_t pos){
     HeapItem t = a[pos];
     while(pos > 0 && a[heap_parent(pos)].val > t.val){
         a[pos] = a[heap_parent(pos)];
+        *a[pos].ref = pos;
         pos = heap_parent(pos);
     }
     a[pos] = t;
+    *a[pos].ref = pos;
 }
 /*@brief Swapping node with children or grandchildren, when value of node is greater. The bigger is value is pushed downwards*/
 void HeapDOWN(HeapItem *a, size_t pos, size_t len){
@@ -44,9 +46,11 @@ void HeapDOWN(HeapItem *a, size_t pos, size_t len){
         }
 
         a[pos] = a[min_pos];
+        *a[pos].ref = pos;
         pos = min_pos;
     }
     a[pos] = t;
+    *a[pos].ref = pos;
 }
 /*@brief If value of parent node becomes greater than child node, it violates a invariant for min-heap.
 Time Complexity : O(logN)
