@@ -1,10 +1,9 @@
 #pragma once 
-// C++ Imports
-#include <iostream>
-// C Imports
-#include <stdint.h>
-#include <stddef.h>
 
+#include <iostream>
+#include <cstdint>
+#include <cstddef>
+#include <cassert>
 class HNode{
     public:
         HNode *next = NULL;
@@ -49,3 +48,4 @@ void hm_foreach(HMap *hmap, bool (*f)(HNode *, void *), void *arg);
 inline size_t hm_size(HMap *hmap){
     return hmap->newer.size+hmap->older.size;
 };
+void h_insert(HTab *htab, HNode *node);
