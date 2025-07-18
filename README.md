@@ -2,9 +2,8 @@
 
 A lightweight Redis-like in-memory key-value store implemented from scratch in C++ using Socket API. This project is based on the [Build Your Own Redis](https://build-your-own.org/redis/) tutorial, with support for IPv6. Made on WSL
 
-## Pre-requisite
-1. C++ compatible serve
-2. Linux/WSL 
+## Pre-requisites
+1. Linux / WSL 
 
 ## 📍 Running 
 
@@ -16,7 +15,7 @@ A lightweight Redis-like in-memory key-value store implemented from scratch in C
    
    ./server
    ```
-    Server runs on port 1234
+    Server runs on port : whatever (I have no idea)
 
 2. **Build client, then run it**
 
@@ -33,6 +32,7 @@ A lightweight Redis-like in-memory key-value store implemented from scratch in C
 
 2. Restructure Client.cpp to run commands implemented (SET, ZSET, etc.). Currently only TTL Expiry is being run.
 
-3. Convert all C style imports to C++ style imports
+3. Convert all C imports to C++ imports
 
-4. Add documentation over functions
+4. Add documentation for functions
+(:/)
