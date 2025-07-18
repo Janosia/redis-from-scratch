@@ -130,4 +130,10 @@ void tree_dispose(AVLNode *node) {
     tree_dispose(node->right);
     znode_del(container_of(node, ZNode, tree));
 }
+/*@brief  Destroying Zset*/
+void zset_clear(Zset *zset) {
+    hm_clear(&zset->hmap);
+    tree_dispose(zset->root);
+    zset->root = NULL;
+}
 
