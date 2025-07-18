@@ -108,11 +108,12 @@ inline void entry_del_func(void *arg) {
     entry_del_sync((Entry *)arg);
 }
 
+void set_ttl(Entry *ent, uint64_t ttl_ms);
 /*@brief Unlink Entry from all other data structures. Remove its timer from Heap
 Sizes of all data structures that can be deleted without contex switch are capped at an upper limit
 
 @param ent Entry that needs to be deleted*/
-void entry_del(Entry * ent){
+inline void entry_del(Entry * ent){
     set_ttl(ent, -1);
     size_t set_size = (ent->type == T_ZSET) ? hm_size(&ent->zset.hmap) : 0;
     const size_t k_large_container_size = 1000; // arbitrary constant value prevents performance form downgrading
@@ -187,5 +188,4 @@ inline void out_end_arr(Buffer &out, size_t ctx, uint32_t n){
 
 bool str2dbl(const string &s, double &out);
 bool str2int(const string &s, int64_t &out);
-void set_ttl(Entry *ent, uint64_t ttl_ms);
 void do_ttl(vector<string> &cmd, Buffer &out);
