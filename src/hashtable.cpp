@@ -1,23 +1,17 @@
+// C++ Imports
 #include <iostream>
-#include <cassert>
-#include <unistd.h>
+#include <cstddef> 
+
 #include "hashtable.h"
 
 using namespace std;
 
 const size_t k_max_load_factor=8, k_rehashing_work = 128;
 
-static void h_init(HTab *htab, size_t n){
-    assert(n>0 && ((n-1)&n) == 0); // taking modulo using power of 2 since actual mod is CPU heavy operation
-
-    htab->tab = (HNode **)calloc(n, sizeof(HNode *));
-    htab->mask = n-1;
-    htab->size =0;
-}
-
-
-// Insertion -> O(1)
-static void h_insert(HTab *htab, HNode *node){
+/*@brief  Insertion of a HNode in O(1)
+@param *htab  pointer to hashtable
+@param *node node that needs to be inserted*/
+void h_insert(HTab *htab, HNode *node){
     size_t pos = node->hcode & htab->mask;
     HNode *next = htab->tab[pos];
     node->next = next;
@@ -25,14 +19,13 @@ static void h_insert(HTab *htab, HNode *node){
     htab->size++;
 }
 
+/*@brief  Returns Parent node of an HNode ; mainly used for deletion*/
 static HNode **h_lookup(HTab *htab, HNode *key, bool(*eq) (HNode*, HNode*)){
     if(!htab->tab) return NULL;
     size_t pos = key->hcode & htab->mask;
     HNode **from = &htab->tab[pos];
     for(HNode *cur; (cur =*from)!=NULL; from=&cur->next){
         if(cur->hcode == key->hcode && eq(cur, key)) return from; 
-        // maybe a node or a pointer 
-        // return parent node pointer  since deletion is the main purpose
     }
     return NULL;
 }
@@ -64,11 +57,12 @@ static void hm_help_rehashing(HMap *hmap) {
     }
 }
 
+/*@brief Doubling size of HMap when load becomes too high*/
 static void hm_trigger_rehashing(HMap *hmap){
     hmap->older = hmap->newer;
     h_init(&hmap->newer, (hmap->newer.mask+1)*2);
     hmap->migrate_pos = 0 ;
-} // Simply double the size of hmap when load too high
+}
 
 HNode *hm_lookup(HMap *hmap, HNode *key, bool (*eq)(HNode * , HNode *)){
     HNode **from = h_lookup(&hmap->newer, key, eq);
@@ -99,17 +93,14 @@ HNode* hm_delete(HMap *hmap, HNode *key, bool (*eq)(HNode * , HNode *)){
     return NULL;
 }
 
+/*@brief Destroy HMap*/
 void hm_clear(HMap *hmap){
     free(hmap->newer.tab);
     free(hmap->older.tab);
     *hmap = HMap{};
 }
 
-size_t hm_size(HMap *hmap){
-    return hmap->newer.size+hmap->older.size;
-}
-
-static bool h_foreach(HTab *htab, bool (*f)(HNode *, void *), void *arg) {
+bool h_foreach(HTab *htab, bool (*f)(HNode *, void *), void *arg) {
     for (size_t i = 0; htab->mask != 0 && i <= htab->mask; i++) {
         for (HNode *node = htab->tab[i]; node != NULL; node = node->next) {
             if (!f(node, arg)) {
