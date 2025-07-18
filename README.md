@@ -10,7 +10,9 @@ A lightweight Redis-like in-memory key-value store implemented from scratch in C
 
 1. **Build server, then run it**
    ```bash
-    g++ -Wall -Wextra -Og -g server.cpp -o server
+    cd build
+
+    make server
    
    ./server
    ```
@@ -19,8 +21,14 @@ A lightweight Redis-like in-memory key-value store implemented from scratch in C
 2. **Build client, then run it**
 
    ```bash
-   g++ -Wall -Wextra -Og -g client.cpp -o client
+   cd build
+
+   make client
    
    ./client
    ```
 
+## To Do
+1. Add Test scripts
+
+2. Restructure Client.cpp to run commands implemented (SET, ZSET, etc.). Currently only TTL Expiry is being run. 
