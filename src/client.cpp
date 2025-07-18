@@ -115,12 +115,7 @@ int main() {
     
     if (rv) die("connect");
     
-    vector<string> query_list = {
-        "hello1", 
-        "hello2", 
-        "hello3",
-        string(k_max_msg, 'z'),
-        "hello5"};
+    vector<string> query_list = { "PING\n","ECHO hello\n"};
     
     for(const string &s: query_list){
         int32_t err = send_req(fd, (uint8_t *)s.data(), s.size());
