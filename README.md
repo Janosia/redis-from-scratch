@@ -31,4 +31,8 @@ A lightweight Redis-like in-memory key-value store implemented from scratch in C
 ## To Do
 1. Add Test scripts
 
-2. Restructure Client.cpp to run commands implemented (SET, ZSET, etc.). Currently only TTL Expiry is being run. 
+2. Restructure Client.cpp to run commands implemented (SET, ZSET, etc.). Currently only TTL Expiry is being run.
+
+3. Convert all C style imports to C++ style imports
+
+4. Add documentation over functions
