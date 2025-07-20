@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stddef.h>
+#include <cstddef>
 #include <pthread.h>
 #include <vector>
 #include <deque>
