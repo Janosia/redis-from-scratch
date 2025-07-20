@@ -1,8 +1,8 @@
 #pragma once 
 
 #include <iostream>
-#include <stdint.h>
-#include <stddef.h>
+#include <cstdint>
+#include <cstddef>
 
 using namespace std;
 
