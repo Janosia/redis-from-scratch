@@ -1,8 +1,8 @@
 #pragma once
 
 #include <iostream>
-#include <stdint.h>
-#include <stddef.h>
+#include <cstdint>
+#include <cstddef>
 
 const uint64_t k_idle_timeout_ms = 5 * 1000;
 
