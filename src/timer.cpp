@@ -1,6 +1,6 @@
 // C++ imports
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 #include <iostream>
 #include <time.h>
 // Project Imports
